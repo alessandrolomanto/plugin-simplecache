@@ -7,6 +7,9 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"net/url"
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/pquerna/cachecontrol"
@@ -84,10 +87,11 @@ func (m *cache) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if err == nil {
 		var data cacheData
 
-		err := json.Unmarshal(b, &data)
-		if err != nil {
+		if err := json.Unmarshal(b, &data); err != nil {
+			log.Printf("Error unmarshaling cache data: %v", err)
 			cs = cacheErrorStatus
 		} else {
+			// Restore headers from cache
 			for key, vals := range data.Headers {
 				for _, val := range vals {
 					w.Header().Add(key, val)
@@ -97,7 +101,9 @@ func (m *cache) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set(cacheHeader, cacheHitStatus)
 			}
 			w.WriteHeader(data.Status)
-			_, _ = w.Write(data.Body)
+			if _, err := w.Write(data.Body); err != nil {
+				log.Printf("Error writing cached response body: %v", err)
+			}
 			return
 		}
 	}
@@ -123,6 +129,7 @@ func (m *cache) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	b, err = json.Marshal(data)
 	if err != nil {
 		log.Printf("Error serializing cache item: %v", err)
+		return
 	}
 
 	if err = m.cache.Set(key, b, expiry); err != nil {
@@ -131,14 +138,31 @@ func (m *cache) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *cache) cacheable(r *http.Request, w http.ResponseWriter, status int) (time.Duration, bool) {
+	// Don't cache error responses
+	if status < 200 || status >= 400 {
+		return 0, false
+	}
+
 	reasons, expireBy, err := cachecontrol.CachableResponseWriter(r, status, w, cachecontrol.Options{})
-	if err != nil || len(reasons) > 0 {
+	if err != nil {
+		log.Printf("Error determining cacheability: %v", err)
+		return 0, false
+	}
+
+	if len(reasons) > 0 {
+		// Debugging: log reasons why not cacheable
+		if log.Flags() != 0 { // Only log if logging is enabled
+			log.Printf("Response not cacheable for %s: %v", r.URL.Path, reasons)
+		}
 		return 0, false
 	}
 
 	expiry := time.Until(expireBy)
-	maxExpiry := time.Duration(m.cfg.MaxExpiry) * time.Second
+	if expiry <= 0 {
+		return 0, false
+	}
 
+	maxExpiry := time.Duration(m.cfg.MaxExpiry) * time.Second
 	if maxExpiry < expiry {
 		expiry = maxExpiry
 	}
@@ -147,7 +171,35 @@ func (m *cache) cacheable(r *http.Request, w http.ResponseWriter, status int) (t
 }
 
 func cacheKey(r *http.Request) string {
-	return r.Method + r.Host + r.URL.Path
+	// Base key with method, host and path
+	key := r.Method + r.Host + r.URL.Path
+
+	// Handle query parameters in a sorted, consistent way
+	if len(r.URL.Query()) > 0 {
+		// Get all query parameter keys
+		params := make([]string, 0, len(r.URL.Query()))
+		for param := range r.URL.Query() {
+			params = append(params, param)
+		}
+
+		// Sort the parameter keys
+		sort.Strings(params)
+
+		var queryParts []string
+		for _, param := range params {
+			values := r.URL.Query()[param]
+			sort.Strings(values)
+
+			for _, value := range values {
+				queryParts = append(queryParts, url.QueryEscape(param)+"="+url.QueryEscape(value))
+			}
+		}
+
+		// Join all parameters with &
+		key += "?" + strings.Join(queryParts, "&")
+	}
+
+	return key
 }
 
 type responseWriter struct {

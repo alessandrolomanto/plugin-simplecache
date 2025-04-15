@@ -2,6 +2,6 @@ displayName: Simple Cache
 summary: Simple cache plugin middleware caches responses on disk.
 type: middleware
 import: github.com/traefik/plugin-simplecache
-compatibility: TODO
+compatibility: go1.21
 testData:
   path: /tmp
