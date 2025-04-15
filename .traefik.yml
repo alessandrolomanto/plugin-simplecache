@@ -1,4 +1,4 @@
-displayName: Simple Cache
+displayName: Simple Cache with Query Params
 summary: Simple cache plugin middleware caches responses on disk.
 type: middleware
 import: github.com/traefik/plugin-simplecache
