@@ -11,8 +11,8 @@ Static:
 
 ```toml
 [experimental.plugins.cache]
-  modulename = "github.com/traefik/plugin-simplecache"
-  version = "v0.2.1"
+  modulename = "github.com/alessandrolomanto/plugin-simplecache"
+  version = "v0.0.1"
 ```
 
 Dynamic:
@@ -58,3 +58,30 @@ The number of seconds to wait between cache cleanup runs.
 
 This determines if the cache status header `Cache-Status` will be added to the
 response headers. This header can have the value `hit`, `miss` or `error`.
+
+## Features
+
+### Query Parameter Handling
+
+The cache key includes all query parameters, ensuring that requests with different query parameters are cached separately. 
+Some of the key features:
+
+- Full URL query string support (path + query parameters)
+- Proper handling of URL-encoded characters in query parameters
+- Consistent caching regardless of parameter order (parameters are sorted)
+- Support for multiple values for the same parameter
+
+### Caching Behavior
+
+Only responses that are cacheable according to HTTP standards are cached:
+
+- Only cacheable status codes (200, 203, 204, etc.)
+- Respects Cache-Control headers
+- Automatic expiration based on max-age directives or plugin configuration
+
+### Error Handling
+
+Improved error handling throughout the plugin:
+- Detailed error logging 
+- Proper handling of cache misses and errors
+- Failsafe mechanisms to prevent serving invalid cached content
