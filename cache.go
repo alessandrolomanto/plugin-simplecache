@@ -11,8 +11,6 @@ import (
 	"sort"
 	"strings"
 	"time"
-
-	"github.com/pquerna/cachecontrol"
 )
 
 // Config configures the middleware.
@@ -143,31 +141,10 @@ func (m *cache) cacheable(r *http.Request, w http.ResponseWriter, status int) (t
 		return 0, false
 	}
 
-	reasons, expireBy, err := cachecontrol.CachableResponseWriter(r, status, w, cachecontrol.Options{})
-	if err != nil {
-		log.Printf("Error determining cacheability: %v", err)
-		return 0, false
-	}
-
-	if len(reasons) > 0 {
-		// Debugging: log reasons why not cacheable
-		if log.Flags() != 0 { // Only log if logging is enabled
-			log.Printf("Response not cacheable for %s: %v", r.URL.Path, reasons)
-		}
-		return 0, false
-	}
-
-	expiry := time.Until(expireBy)
-	if expiry <= 0 {
-		return 0, false
-	}
-
+	// Instead of checking cache headers, always cache for maxExpiry duration
 	maxExpiry := time.Duration(m.cfg.MaxExpiry) * time.Second
-	if maxExpiry < expiry {
-		expiry = maxExpiry
-	}
+	return maxExpiry, true
 
-	return expiry, true
 }
 
 func cacheKey(r *http.Request) string {
